@@ -179,7 +179,7 @@ int bitCount(int x) {
 // for two, like 3,   
 // for four like 0b1111,((15&0b0101)+(15&1010>>1))>>2+(((15&0b0101)+(15&1010>>1))&0b11)=0b100
 // and for 32 just like that
-    int result;
+    int result = 0;
     int even_32 = (0xaaaaaaaa&x)>>1;
     int odd_32 = (0x55555555&x);
     int sum_32 = odd_32 + even_32;
@@ -187,8 +187,7 @@ int bitCount(int x) {
     odd_32 = (0x33333333&sum_32);
     sum_32 = odd_32 + even_32;//8个4位，每4位后三位的大小代表数量
     result = (sum_32 & 0b1111) + (sum_32>>4 & 0b1111)+ (sum_32>>8 & 0b1111)+ (sum_32>>12 & 0b1111)+ (sum_32>>16 & 0b1111)+ (sum_32>>20 & 0b1111)+ (sum_32>>24 & 0b1111)+(sum_32>>28 & 0b1111);
-
-  return ;
+    return result;
 }
 /* 
  * bang - Compute !x without using !
@@ -198,7 +197,10 @@ int bitCount(int x) {
  *   Rating: 4 
  */
 int bang(int x) {
-  return 2;
+  //the diff for 0 is the sigh for -0 is 0 not 1
+  int reverse = ~x+1;   
+  int first_place = (x|reverse)>>31;
+  return ((~first_place) >> 31)&1;
 }
 /* 
  * tmin - return minimum two's complement integer 
@@ -207,7 +209,7 @@ int bang(int x) {
  *   Rating: 1
  */
 int tmin(void) {
-  return 2;
+  return 1<<31;
 }
 /* 
  * fitsBits - return 1 if x can be represented as an 
@@ -218,8 +220,14 @@ int tmin(void) {
  *   Max ops: 15
  *   Rating: 2
  */
-int fitsBits(int x, int n) {
-  return 2;
+int fitsBits(int x, int n) { 
+//represent x as 2's complement,then compare with n
+//need be care with 1<<31
+int is_32 = n>>5;// return 1 while n = 32
+int nbit_min = 1 << 31;
+int nbit_max = (1 << n >> 1) & (~nbit_min);
+x += nbit_max;  
+return (!(x>>n))|is_32;  
 }
 /* 
  * divpwr2 - Compute x/(2^n), for 0 <= n <= 30
@@ -230,7 +238,14 @@ int fitsBits(int x, int n) {
  *   Rating: 2
  */
 int divpwr2(int x, int n) {
-    return 2;
+  //+2^n
+  int sign = !(x>>31);//get posi or neg
+  sign = !!sign;
+  sign = ~sign+1;
+  int pos_div = x>>n;
+  int neg_div = (x+(1<<n)+(~1+1))>>n;
+  return (sign&pos_div)|(~sign&neg_div);
+
 }
 /* 
  * negate - return -x 
@@ -240,7 +255,7 @@ int divpwr2(int x, int n) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+  return (~x+1);
 }
 /* 
  * isPositive - return 1 if x > 0, return 0 otherwise 
@@ -250,7 +265,10 @@ int negate(int x) {
  *   Rating: 3
  */
 int isPositive(int x) {
-  return 2;
+  // 0 or neg
+  int is_0 = !(((~x+1)|x)>>31);//is 1 if is 0
+  int is_neg = x>>31;
+  return !(is_0|is_neg);
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -260,7 +278,14 @@ int isPositive(int x) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  //sub then compare with 0
+  //be careful with ==
+  //compare posi&neg
+  int x_neg_y_posi = (x>>31&(!(y>>31)))&1;
+  int x_posi_y_neg = !((y>>31&(!(x>>31)))&1);
+  int sub = x + (~y);
+  int sign = (sub>>31)&1;
+  return (sign|x_neg_y_posi)&x_posi_y_neg;
 }
 /*
  * ilog2 - return floor(log base 2 of x), where x > 0
@@ -270,7 +295,18 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4
  */
 int ilog2(int x) {
-  return 2;
+    unsigned int r = 0, t;
+
+    t = ((~((x >> 16) + ~0U)) >> 27) & 0x10;
+    r |= t, x >>= t;
+    t = ((~((x >>  8) + ~0U)) >> 28) &  0x8;
+    r |= t, x >>= t;
+    t = ((~((x >>  4) + ~0U)) >> 29) &  0x4;
+    r |= t, x >>= t;
+    t = ((~((x >>  2) + ~0U)) >> 30) &  0x2;
+    r |= t, x >>= t;
+
+    return (r | (x >> 1));
 }
 /* 
  * float_neg - Return bit-level equivalent of expression -f for
@@ -284,7 +320,14 @@ int ilog2(int x) {
  *   Rating: 2
  */
 unsigned float_neg(unsigned uf) {
- return 2;
+  //check NaN (?infinity)
+    int test = uf|0x80000000;
+    test = test>>23;
+    test = ~test;
+    if (((0xff800000^uf)<<1) &&(!test))return uf;
+    unsigned sign = 1<<31;
+    uf = sign + uf;
+    return uf;
 }
 /* 
  * float_i2f - Return bit-level equivalent of expression (float) x
@@ -296,7 +339,25 @@ unsigned float_neg(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_i2f(int x) {
-  return 2;
+    int e = 158;
+    int mask = 1<<31;
+    int sign = x&mask;
+    int frac;
+    if (x == mask)
+        return mask | (158<<23);
+    if (!x)
+        return 0;
+    if (sign)
+        x = ~x + 1;
+    while (!(x&mask)) {
+        x = x<<1;
+        e = e -1;
+    }
+    frac = (x&(~mask)) >> 8;
+    if (x&0x80 && ((x&0x7F) > 0 || frac&1))
+        frac = frac + 1;
+    return sign + (e<<23) + frac;
+
 }
 /* 
  * float_twice - Return bit-level equivalent of expression 2*f for
@@ -310,5 +371,28 @@ unsigned float_i2f(int x) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
-  return 2;
+  //
+  // Case-by-case.
+  //
+  int e = (uf >> 23) & 0xFF;
+  // Denormalized Case
+  if(!e)
+  {
+    e = 0xFF;
+    // Significand overflow is okay; Automatically managed as Normalized Case.
+    uf = (uf & 0x80000000) | (uf << 1);
+  }
+  // Overflow Case
+  if(!(e ^ 0xFE))
+  {
+    e = 0xFF;
+    // Set Infinite, not NaN
+    uf = (uf & 0x80000000) | (e << 23);
+  }
+  // Nothing to process if Exp = 0xFF
+  if(e ^ 0xFF)
+  {
+    uf = uf + (1 << 23);
+  }
+  return uf;
 }
