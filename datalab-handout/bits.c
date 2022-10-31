@@ -339,14 +339,14 @@ unsigned float_neg(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_i2f(int x) {
+    if (!x)
+        return 0;
     int e = 158;
     int mask = 1<<31;
     int sign = x&mask;
     int frac;
     if (x == mask)
         return mask | (158<<23);
-    if (!x)
-        return 0;
     if (sign)
         x = ~x + 1;
     while (!(x&mask)) {
@@ -371,28 +371,14 @@ unsigned float_i2f(int x) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
-  //
-  // Case-by-case.
-  //
+  // 4case.
   int e = (uf >> 23) & 0xFF;
-  // Denormalized Case
-  if(!e)
-  {
-    e = 0xFF;
-    // Significand overflow is okay; Automatically managed as Normalized Case.
-    uf = (uf & 0x80000000) | (uf << 1);
-  }
-  // Overflow Case
+  if(!(e ^ 0xFF)) 
+      return uf;
+  if(!e) 
+      return  (uf & 0x80000000) | (uf << 1);  // Denormalized Case
   if(!(e ^ 0xFE))
-  {
-    e = 0xFF;
-    // Set Infinite, not NaN
-    uf = (uf & 0x80000000) | (e << 23);
-  }
-  // Nothing to process if Exp = 0xFF
-  if(e ^ 0xFF)
-  {
-    uf = uf + (1 << 23);
-  }
+      return (uf & 0x80000000) | (e << 23);  // Overflow Case
+  uf = uf + (1 << 23); // Normalized Case
   return uf;
 }
